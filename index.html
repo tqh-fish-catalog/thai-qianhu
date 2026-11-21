@@ -101,7 +101,7 @@ const IMG=/\.(jpe?g|png|webp|gif|avif)$/i;
 const VID=/\.(mp4|webm|m4v|mov)$/i;
 const $=s=>document.querySelector(s);
 const nat=(a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:"base"});
-const code=n=>"#"+String(n).padStart(3,"0");
+const code=n=>String(n); // รหัส = ชื่อไฟล์ (ไม่รวมนามสกุล)
 const hash=t=>{let h=0;for(const c of t)h=(h*31+c.charCodeAt(0))>>>0;return h};
 const sel=new Map(); // folder -> Set of codes
 let CATALOG=[], active="ALL";
@@ -145,12 +145,10 @@ function buildCatalog(tree){
     const o=OVERRIDES[f]||{};
     const color=o.color||PALETTE[hash(f)%PALETTE.length];
     const files=map[f].sort(nat);
-    const used=new Set();
+    const bases=files.map(f=>f.replace(/\.[^.]+$/,""));
     const items=files.map((file,i)=>{
-      const base=file.replace(/\.[^.]+$/,"");
-      let n=/^\d+$/.test(base)?parseInt(base,10):i+1;
-      while(used.has(n))n+=1000;used.add(n);
-      return {n,file,video:VID.test(file)}});
+      const dup=bases.filter(b=>b===bases[i]).length>1;
+      return {n:dup?file:bases[i],file,video:VID.test(file)}});
     return {folder:f,title:o.title||f,color,items}})}
 
 /* ---------- แสดงผล ---------- */
@@ -208,7 +206,7 @@ function total(){let t=0;sel.forEach(s=>t+=s.size);return t}
 function updateBar(){$("#selCount").textContent=total()}
 function orderText(){
   const lines=[];
-  CATALOG.forEach(l=>{if(sel.has(l.folder)){const ns=[...sel.get(l.folder)].sort((a,b)=>a-b);lines.push(`${showBadge(l)?`${l.title} (${l.folder})`:l.title}: ${ns.map(code).join(", ")}`)}});
+  CATALOG.forEach(l=>{if(sel.has(l.folder)){const ns=[...sel.get(l.folder)].sort(nat);lines.push(`${showBadge(l)?`${l.title} (${l.folder})`:l.title}: ${ns.map(code).join(", ")}`)}});
   return lines.length?`Order inquiry — ${total()} fish\n\n${lines.join("\n")}`:""}
 function clearAll(){sel.clear();render();$("#order").close();toast("Selection cleared")}
 
@@ -221,7 +219,7 @@ function openLb(l,it){lbCur={l,n:it.n};
   $("#lbCap").textContent=`${l.title} ${code(it.n)}`;syncLb();$("#lb").showModal()}
 function syncLb(){const {l,n}=lbCur;const b=$("#lbSel");b.textContent=isSel(l.folder,n)?"Selected ✓":"Select";b.style.setProperty("--c",l.color)}
 $("#lbSel").onclick=()=>{toggle(lbCur.l.folder,lbCur.n);syncLb();
-  const c=document.querySelector(`.card[data-f="${CSS.escape(lbCur.l.folder)}"][data-n="${lbCur.n}"]`);
+  const c=document.querySelector(`.card[data-f="${CSS.escape(lbCur.l.folder)}"][data-n="${CSS.escape(String(lbCur.n))}"]`);
   if(c){const on=isSel(lbCur.l.folder,lbCur.n);c.classList.toggle("sel",on);c.querySelector(".btn").textContent=on?"Selected ✓":"Select"}};
 $("#lbClose").onclick=()=>$("#lb").close();
 $("#lb").addEventListener("close",()=>{const v=$("#lbVid");v.pause();v.removeAttribute("src");v.load()});
@@ -234,7 +232,7 @@ $("#reviewBtn").onclick=()=>{
   CATALOG.forEach(l=>{if(sel.has(l.folder)){
     const d=document.createElement("div");d.className="sum-lot";d.style.setProperty("--c",l.color);
     const b=document.createElement("b");b.textContent=l.title;d.appendChild(b);
-    d.append(" ",document.createElement("br"),[...sel.get(l.folder)].sort((a,b)=>a-b).map(code).join(", "));
+    d.append(" ",document.createElement("br"),[...sel.get(l.folder)].sort(nat).map(code).join(", "));
     body.appendChild(d)}});
   $("#orderText").value=orderText();$("#order").showModal()};
 async function copy(t,msg){
