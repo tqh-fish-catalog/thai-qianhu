@@ -31,7 +31,10 @@ main{max-width:1200px;margin:auto;padding:0 20px}
 .card{background:var(--surface);border:1.5px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;border-top:4px solid var(--c)}
 .card.sel{border-color:var(--c);box-shadow:0 0 0 2px var(--c)}
 .ph{aspect-ratio:1;background:var(--bg);cursor:zoom-in;position:relative}
-.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph img,.ph video{width:100%;height:100%;object-fit:cover;display:block}
+.ph video{pointer-events:none;background:#000}
+.play{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.65);color:#fff;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;pointer-events:none}
+#lb video{width:100%;max-height:75vh;display:block;background:#000}
 .err{display:flex;height:100%;align-items:center;justify-content:center;text-align:center;padding:10px;font-size:12px;color:var(--muted);cursor:default}
 .meta{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;gap:6px}
 .code{font-weight:600;font-variant-numeric:tabular-nums}
@@ -59,7 +62,7 @@ textarea{min-height:170px;font-family:ui-monospace,monospace}
 <body>
 <header>
   <h1>Ornamental Fish Export Catalog</h1>
-  <p>Tap a photo to zoom. Press Select on the fish you like, then copy your order list and send it to us.</p>
+  <p>Tap a photo or video to open it. Press Select on the fish you like, then copy your order list and send it to us.</p>
 </header>
 <nav class="tabs" id="tabs" aria-label="Categories"></nav>
 <main id="main"><p class="msg">Loading catalog…</p></main>
@@ -73,7 +76,7 @@ textarea{min-height:170px;font-family:ui-monospace,monospace}
 </div>
 <div id="toast"></div>
 
-<dialog id="lb"><img id="lbImg" alt=""><div class="lbbar"><span id="lbCap"></span><span class="row" style="flex:none"><button class="btn fill" id="lbSel">Select</button><button class="btn ghost" style="color:#fff" id="lbClose">Close</button></span></div></dialog>
+<dialog id="lb"><img id="lbImg" alt=""><video id="lbVid" controls playsinline hidden></video><div class="lbbar"><span id="lbCap"></span><span class="row" style="flex:none"><button class="btn fill" id="lbSel">Select</button><button class="btn ghost" style="color:#fff" id="lbClose">Close</button></span></div></dialog>
 
 <dialog id="order"><div class="dlg">
   <h3>Your order list</h3>
@@ -95,6 +98,7 @@ const IGNORE_FOLDERS = ["node_modules","assets","docs"]; // โฟลเดอ�
 
 const PALETTE=["#2563eb","#c2410c","#7e22ce","#0f766e","#be123c","#4d7c0f","#a16207","#0e7490","#4338ca","#9d174d"];
 const IMG=/\.(jpe?g|png|webp|gif|avif)$/i;
+const VID=/\.(mp4|webm|m4v|mov)$/i;
 const $=s=>document.querySelector(s);
 const nat=(a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:"base"});
 const code=n=>"#"+String(n).padStart(3,"0");
@@ -133,7 +137,7 @@ function buildCatalog(tree){
   tree.forEach(t=>{
     if(t.type!=="blob")return;
     const p=t.path.split("/");
-    if(p.length!==2||!IMG.test(p[1]))return;
+    if(p.length!==2||!(IMG.test(p[1])||VID.test(p[1])))return;
     const f=p[0];
     if(/^[._]/.test(f)||IGNORE_FOLDERS.includes(f))return;
     (map[f]=map[f]||[]).push(p[1])});
@@ -146,7 +150,7 @@ function buildCatalog(tree){
       const base=file.replace(/\.[^.]+$/,"");
       let n=/^\d+$/.test(base)?parseInt(base,10):i+1;
       while(used.has(n))n+=1000;used.add(n);
-      return {n,file}});
+      return {n,file,video:VID.test(file)}});
     return {folder:f,title:o.title||f,color,items}})}
 
 /* ---------- แสดงผล ---------- */
@@ -174,13 +178,22 @@ function render(){
     main.appendChild(sec)});
   updateBar();
 }
+const vidObs=new IntersectionObserver((es)=>es.forEach(e=>{if(e.isIntersecting){const v=e.target;v.preload="metadata";v.src=v.dataset.src;vidObs.unobserve(v)}}),{rootMargin:"300px"});
 function card(l,it){
   const n=it.n,c=document.createElement("div");c.className="card"+(isSel(l.folder,n)?" sel":"");
   c.dataset.f=l.folder;c.dataset.n=n;c.style.setProperty("--c",l.color);
   const ph=document.createElement("div");ph.className="ph";
-  const img=new Image();img.loading="lazy";img.alt=`${l.title} ${code(n)}`;img.src=src(l,it);
-  img.onerror=()=>{ph.innerHTML=`<div class="err">Photo ${code(n)} unavailable</div>`;ph.style.cursor="default";ph.onclick=null};
-  ph.appendChild(img);ph.onclick=()=>openLb(l,it);
+  if(it.video){
+    const v=document.createElement("video");v.muted=true;v.playsInline=true;v.preload="none";v.dataset.src=src(l,it)+"#t=0.1";
+    v.onerror=()=>{ph.innerHTML=`<div class="err">Video ${code(n)} unavailable</div>`;ph.style.cursor="default";ph.onclick=null};
+    const tag=document.createElement("span");tag.className="play";tag.textContent="▶ Video";
+    ph.append(v,tag);vidObs.observe(v);
+  }else{
+    const img=new Image();img.loading="lazy";img.alt=`${l.title} ${code(n)}`;img.src=src(l,it);
+    img.onerror=()=>{ph.innerHTML=`<div class="err">Photo ${code(n)} unavailable</div>`;ph.style.cursor="default";ph.onclick=null};
+    ph.appendChild(img);
+  }
+  ph.onclick=()=>openLb(l,it);
   const m=document.createElement("div");m.className="meta";
   m.innerHTML=`<span class="code">${code(n)}</span>`;
   const b=document.createElement("button");b.className="btn";b.textContent=isSel(l.folder,n)?"Selected ✓":"Select";
@@ -201,12 +214,17 @@ function clearAll(){sel.clear();render();$("#order").close();toast("Selection cl
 
 /* Lightbox */
 let lbCur=null;
-function openLb(l,it){lbCur={l,n:it.n};$("#lbImg").src=src(l,it);$("#lbCap").textContent=`${l.title} ${code(it.n)}`;syncLb();$("#lb").showModal()}
+function openLb(l,it){lbCur={l,n:it.n};
+  const im=$("#lbImg"),vd=$("#lbVid");
+  if(it.video){im.hidden=true;vd.hidden=false;vd.src=src(l,it);vd.play().catch(()=>{})}
+  else{vd.hidden=true;im.hidden=false;im.src=src(l,it)}
+  $("#lbCap").textContent=`${l.title} ${code(it.n)}`;syncLb();$("#lb").showModal()}
 function syncLb(){const {l,n}=lbCur;const b=$("#lbSel");b.textContent=isSel(l.folder,n)?"Selected ✓":"Select";b.style.setProperty("--c",l.color)}
 $("#lbSel").onclick=()=>{toggle(lbCur.l.folder,lbCur.n);syncLb();
   const c=document.querySelector(`.card[data-f="${CSS.escape(lbCur.l.folder)}"][data-n="${lbCur.n}"]`);
   if(c){const on=isSel(lbCur.l.folder,lbCur.n);c.classList.toggle("sel",on);c.querySelector(".btn").textContent=on?"Selected ✓":"Select"}};
 $("#lbClose").onclick=()=>$("#lb").close();
+$("#lb").addEventListener("close",()=>{const v=$("#lbVid");v.pause();v.removeAttribute("src");v.load()});
 $("#lb").addEventListener("click",e=>{if(e.target.id==="lb")e.target.close()});
 
 /* Order dialog */
